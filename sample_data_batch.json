@@ -1,0 +1,122 @@
+[
+    {
+        "id": 1,
+        "title": "Billetera negra de cuero",
+        "description": "Perdí mi billetera negra de marca Wilson con mis documentos personales cerca de la estación.",
+        "category": "billetera"
+    },
+    {
+        "id": 2,
+        "title": "Cartera negra marca Wilson",
+        "description": "Se me cayó una cartera negra Wilson en el transporte público, tiene mis identificaciones.",
+        "category": "billetera"
+    },
+    {
+        "id": 3,
+        "title": "Billetera de piel Wilson negra",
+        "description": "Busco billetera de cuero negra marca Wilson, contiene credenciales a nombre de Juan Pérez.",
+        "category": "billetera"
+    },
+    {
+        "id": 4,
+        "title": "Cartera de hombre Wilson",
+        "description": "Extravié mi cartera Wilson de color negro, es de piel y tiene tarjetas bancarias.",
+        "category": "billetera"
+    },
+    {
+        "id": 5,
+        "title": "Mochila azul North Face",
+        "description": "Mochila azul marca North Face perdida en el campus universitario, tiene una laptop dentro.",
+        "category": "mochila"
+    },
+    {
+        "id": 6,
+        "title": "Mochila North Face azul marino",
+        "description": "Olvidé mi mochila azul oscuro North Face en el salón de clases, es de tamaño mediano.",
+        "category": "mochila"
+    },
+    {
+        "id": 7,
+        "title": "Mochila universitaria azul",
+        "description": "Se busca mochila azul marca North Face extraviada hoy por la mañana en la facultad.",
+        "category": "mochila"
+    },
+    {
+        "id": 8,
+        "title": "Maleta tipo mochila North Face",
+        "description": "Perdí una maleta azul marca North Face, parece mochila de senderismo, tiene correas grises.",
+        "category": "mochila"
+    },
+    {
+        "id": 9,
+        "title": "Bolso azul North Face",
+        "description": "Mochila color azul marca North Face perdida cerca de la biblioteca universitaria.",
+        "category": "mochila"
+    },
+    {
+        "id": 10,
+        "title": "iPhone 13 plateado",
+        "description": "Perdí mi iPhone 13 color plata con una funda de silicona transparente en el centro comercial.",
+        "category": "telefono"
+    },
+    {
+        "id": 11,
+        "title": "Celular Apple plateado",
+        "description": "Se me perdió un celular Apple color plateado, es el modelo iPhone 13, tiene el cristal roto.",
+        "category": "telefono"
+    },
+    {
+        "id": 12,
+        "title": "iPhone 13 color plata",
+        "description": "Busco iPhone 13 plata extraviado en la plaza principal, tiene un sticker de un perro atrás.",
+        "category": "telefono"
+    },
+    {
+        "id": 13,
+        "title": "Teléfono iPhone 13 plata",
+        "description": "Se busca iPhone 13 plateado con protector de pantalla, se me olvidó en el baño del cine.",
+        "category": "telefono"
+    },
+    {
+        "id": 14,
+        "title": "Llaves con llavero de perro",
+        "description": "Encontré unas llaves en el parque que tienen un llavero de un perrito de peluche marrón.",
+        "category": "llaves"
+    },
+    {
+        "id": 15,
+        "title": "Gafas de sol Ray-Ban",
+        "description": "Perdí mis lentes oscuros marca Ray-Ban modelo Wayfarer en la playa el domingo.",
+        "category": "accesorios"
+    },
+    {
+        "id": 16,
+        "title": "Libro de Cálculo Stewart",
+        "description": "Olvidé mi libro de matemáticas Cálculo de una variable Stewart en la cafetería central.",
+        "category": "libros"
+    },
+    {
+        "id": 17,
+        "title": "Botella de agua térmica",
+        "description": "Botella roja marca Stanley olvidada en el gimnasio, tiene una abolladura en la base.",
+        "category": "otros"
+    },
+    {
+        "id": 18,
+        "title": "Paraguas negro grande",
+        "description": "Paraguas clásico color negro olvidado en el autobús de la línea 5 esta tarde lluviosa.",
+        "category": "otros"
+    },
+    {
+        "id": 19,
+        "title": "Audífonos Sony inalámbricos",
+        "description": "Audífonos Sony negros con cancelación de ruido perdidos en la terminal de buses.",
+        "category": "electronica"
+    },
+    {
+        "id": 20,
+        "title": "Chaqueta de mezclilla azul",
+        "description": "Chaqueta azul de mezclilla marca Levi's dejada en la sala 4 del cine anoche.",
+        "category": "ropa"
+    }
+]
