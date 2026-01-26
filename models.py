@@ -4,14 +4,12 @@ from typing import List, Optional
 # --- Input ---
 class PublicationCreate(BaseModel):
     id: int = Field(..., description="ID único de la publicación")
-    title: str = Field(..., min_length=3)
-    description: str = Field(..., min_length=10)
-    category: str = Field(..., example="mochila")
+    title: str
+    description: str
 
 class SearchQuery(BaseModel):
     title: Optional[str] = Field(None, description="Título o palabras clave")
     description: str = Field(..., min_length=3)
-    category: str = Field(..., description="Categoría para filtrar")
     similarity_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
 
 # --- Output ---
@@ -19,7 +17,6 @@ class MatchResult(BaseModel):
     id: int
     title: str
     description: str
-    category: str
     similarity: float
 
 class SearchResponse(BaseModel):
@@ -40,3 +37,33 @@ class VectorRecord(BaseModel):
     id: int
     vector: List[float]
     cluster: int
+
+
+class PostFromSupabase(BaseModel):
+    """
+    Optimized model for Machine Learning training.
+    Represents the minimal data structure fetched from Supabase.
+    """
+    id: int
+    title: str
+    description: str
+
+    class Config:
+        # 'from_attributes = True' acts as a universal translator:
+        # It allows Pydantic to create an instance of this model even if 
+        # the data from Supabase arrives as an object with attributes (e.g., data.titulo) 
+        # instead of a standard dictionary (e.g., data["titulo"]). 
+        # Essential for compatibility with Databases and ORMs.
+        from_attributes = True
+
+
+class PostVectorResponse(BaseModel):
+    """
+    Representa un registro de la tabla post_vectors.
+    """
+    post_id: int
+    vector_embedding: List[float]
+    cluster_id: int
+
+    class Config:
+        from_attributes = True
