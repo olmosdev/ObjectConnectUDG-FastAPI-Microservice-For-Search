@@ -13,6 +13,9 @@ class SupabaseManager:
         self.client: Client = create_client(url, key)
 
     def get_all_posts(self):
+        # Trae todos los registros de la tabla 'posts' necesarios para la vectorización.
+        response = self.client.table("posts").select("id, title, description, product_category_id").execute()
+        return response.data
         """Trae todos los registros de la tabla 'posts' necesarios para la vectorización."""
         response = self.client.table("posts").select("id, title, description").execute()
         return response.data
@@ -41,6 +44,13 @@ class SupabaseManager:
         """Inserta una nueva publicación en la tabla 'posts'."""
         response = self.client.table("posts").insert(post_data).execute()
         return response.data
+
+    def get_category_name_by_id(self, category_id: int):
+        """Obtiene el nombre de la categoría por su ID."""
+        if category_id is None:
+            return None
+        response = self.client.table("categories").select("name").eq("id", category_id).execute()
+        return response.data[0]['name'] if response.data else None
 
     def match_posts_by_cluster(self, query_embedding_text: str, p_cluster_id: int, p_match_threshold: float, p_match_count: int):
         """

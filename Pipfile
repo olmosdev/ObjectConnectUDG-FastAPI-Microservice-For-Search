@@ -9,6 +9,8 @@ uvicorn = "*"
 scikit-learn = "*"
 joblib = "*"
 nltk = "*"
+supabase = "*"
+dotenv = "*"
 
 [dev-packages]
 

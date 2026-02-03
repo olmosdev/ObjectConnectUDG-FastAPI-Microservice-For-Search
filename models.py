@@ -6,6 +6,7 @@ class PublicationCreate(BaseModel):
     id: int = Field(..., description="ID único de la publicación")
     title: str
     description: str
+    category_name: str = Field(..., description="Nombre de la categoría del producto")
 
 class SearchQuery(BaseModel):
     title: Optional[str] = Field(None, description="Título o palabras clave")
@@ -47,6 +48,7 @@ class PostFromSupabase(BaseModel):
     id: int
     title: str
     description: str
+    product_category_id: int
 
     class Config:
         # 'from_attributes = True' acts as a universal translator:

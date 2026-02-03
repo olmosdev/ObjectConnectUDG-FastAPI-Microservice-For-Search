@@ -2,9 +2,12 @@ import os
 import json
 import joblib
 import asyncio
+import time
+import logging
 from typing import List
 from datetime import datetime
 from contextlib import asynccontextmanager
+import numpy as np
 
 from fastapi import FastAPI, HTTPException
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -26,6 +29,7 @@ from supabase_service import db_manager
 FOLDER = "data"
 MODEL_VEC = f"{FOLDER}/vectorizer.joblib"
 MODEL_KMEANS = f"{FOLDER}/kmeans.joblib"
+FIXED_DIM = 1000
 
 os.makedirs(FOLDER, exist_ok=True)
 try:
@@ -58,30 +62,56 @@ async def sync_models_and_vectors():
     Background task: Every 60 seconds it checks Supabase, trains and vectorizes everything.
     """
     while True:
+        start_total = time.time()
         # We try to get the block. If it's already being trained, we wait for the next cycle.
         if not training_lock.locked():
             async with training_lock:
                 try:
                     print(f"[{datetime.now()}] Starting sync cycle...")
+                    start_fetch = time.time()
                     all_posts = db_manager.get_all_posts()
+                    fetch_time = time.time() - start_fetch
+                    print(f"[{datetime.now()}] Fetched {len(all_posts)} posts in {fetch_time:.2f}s")
                     
                     if len(all_posts) >= 2:
                         # 1. Train Models
-                        corpus = [f"{p['title']} {p['description']}" for p in all_posts]
-                        vec = TfidfVectorizer(stop_words=stop_words_es, max_features=500, ngram_range=(1, 2))
+                        start_train = time.time()
+                        # Obtener nombres de categorías para cada post
+                        corpus = []
+                        for p in all_posts:
+                            category_name = db_manager.get_category_name_by_id(p['product_category_id'])
+                            if category_name:
+                                text = f"{p['title']} {p['description']} {category_name}"
+                            else:
+                                text = f"{p['title']} {p['description']}"
+                            corpus.append(text)
+                        vec = TfidfVectorizer(stop_words=stop_words_es, max_features=FIXED_DIM, ngram_range=(1, 2))
                         matrix = vec.fit_transform(corpus)
+                        
+                        # Pad to fixed dimension
+                        n_features = matrix.shape[1]
+                        if n_features < FIXED_DIM:
+                            matrix = np.pad(matrix.toarray(), ((0, 0), (0, FIXED_DIM - n_features)), mode='constant', constant_values=0)
+                        else:
+                            matrix = matrix.toarray()
                         
                         k = min(4, len(all_posts))
                         km = KMeans(n_clusters=k, random_state=42, n_init=10)
                         clusters = km.fit_predict(matrix)
+                        train_time = time.time() - start_train
+                        print(f"[{datetime.now()}] Trained models in {train_time:.2f}s")
 
                         # 2. Save to disk
+                        start_save = time.time()
                         joblib.dump(vec, MODEL_VEC)
                         joblib.dump(km, MODEL_KMEANS)
+                        save_time = time.time() - start_save
+                        print(f"[{datetime.now()}] Saved models in {save_time:.2f}s")
 
                         # 3. Update vectors in Supabase (Batch)
+                        start_vectorize = time.time()
                         new_vectors = []
-                        matrix_array = matrix.toarray()
+                        matrix_array = matrix
                         for i, post in enumerate(all_posts):
                             vector_val = matrix_array[i].tolist()
                             if any(val != 0 for val in vector_val):
@@ -95,17 +125,20 @@ async def sync_models_and_vectors():
                             # Bulk cleaning and upload
                             db_manager.client.table("post_vectors").delete().gt("post_id", 0).execute()
                             db_manager.client.table("post_vectors").insert(new_vectors).execute()
+                        vectorize_time = time.time() - start_vectorize
+                        print(f"[{datetime.now()}] Vectorized and updated DB in {vectorize_time:.2f}s")
                         
                         # 4. Refresh models in memory
                         load_ml_models()
-                        print(f"[{datetime.now()}] Sync complete: {len(new_vectors)} posts updated.")
+                        total_time = time.time() - start_total
+                        print(f"[{datetime.now()}] Sync complete: {len(new_vectors)} posts updated in {total_time:.2f}s total.")
                     else:
                         print("Not enough posts to train (min 2).")
 
                 except Exception as e:
                     print(f"Error during background sync: {e}")
         
-        await asyncio.sleep(60) # Wait 1 minute
+        await asyncio.sleep(300) # Wait for 5 minutes
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -142,10 +175,14 @@ async def search(query: SearchQuery):
     # 2. Generate query vector
     title_q = query.title if query.title else ""
     text_q = f"{title_q} {query.description}"
-    query_embedding = vectorizer.transform([text_q]).toarray()[0].tolist()
+    query_embedding = vectorizer.transform([text_q]).toarray()[0]
 
-    # Verify if query_embedding has the expected dimension (290)
-    expected_dimension = 290 
+    # Pad to fixed dimension
+    if len(query_embedding) < FIXED_DIM:
+        query_embedding = np.pad(query_embedding, (0, FIXED_DIM - len(query_embedding)), mode='constant', constant_values=0)
+
+    # Verify if query_embedding has the expected dimension (FIXED_DIM)
+    expected_dimension = FIXED_DIM
     if len(query_embedding) != expected_dimension:
         if len(query_embedding) == 0:
             return SearchResponse(total_found=0, matches=[], message="La consulta no produjo un vector con dimensiones (el vectorizador no generó dimensiones). Verifique el entrenamiento del modelo.")
@@ -157,8 +194,7 @@ async def search(query: SearchQuery):
         return SearchResponse(total_found=0, matches=[], message="La consulta no produjo un vector significativo (posiblemente fuera del vocabulario del modelo o solo stopwords).")
 
     # 3. Predict query cluster
-    # To predict the cluster, we need the input to have the same shape (2D array)
-    query_cluster_id = int(kmeans.predict(vectorizer.transform([text_q]))[0])
+    query_cluster_id = int(kmeans.predict(query_embedding.reshape(1, -1))[0])
 
     # 4. Call the optimized search in Supabase
     try:
@@ -166,7 +202,7 @@ async def search(query: SearchQuery):
         match_count = 20 # You can adjust this number as needed.
         
         raw_matches = db_manager.match_posts_by_cluster(
-            query_embedding_text=json.dumps(query_embedding), # We convert the list to a JSON string
+            query_embedding_text=json.dumps(query_embedding.tolist()), # We convert the list to a JSON string
             p_cluster_id=query_cluster_id,
             p_match_threshold=query.similarity_threshold,
             p_match_count=match_count
@@ -190,8 +226,17 @@ async def get_publications():
 
     try:
         posts = db_manager.get_all_posts()
-        # db_manager.get_all_posts() returns data in a dict format compatible with PublicationCreate
-        return [PublicationCreate(**p) for p in posts] if posts else []
+        # Mapear para incluir category_name
+        publications = []
+        for p in posts:
+            category_name = db_manager.get_category_name_by_id(p['product_category_id']) or "Sin categoría"
+            publications.append({
+                "id": p["id"],
+                "title": p["title"],
+                "description": p["description"],
+                "category_name": category_name
+            })
+        return publications
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener publicaciones de Supabase: {str(e)}")
 
@@ -226,11 +271,25 @@ async def train_models_endpoint():
         if len(all_posts) < 2:
             raise HTTPException(status_code=400, detail="Se necesitan al menos 2 publicaciones para entrenar el modelo KMeans.")
 
-        corpus = [f"{p['title']} {p['description']}" for p in all_posts]
+        corpus = []
+        for p in all_posts:
+            category_name = db_manager.get_category_name_by_id(p['product_category_id'])
+            if category_name:
+                text = f"{p['title']} {p['description']} {category_name}"
+            else:
+                text = f"{p['title']} {p['description']}"
+            corpus.append(text)
 
         # Initialize and train TfidfVectorizer
-        vectorizer = TfidfVectorizer(stop_words=stop_words_es, max_features=500, ngram_range=(1, 2))
+        vectorizer = TfidfVectorizer(stop_words=stop_words_es, max_features=FIXED_DIM, ngram_range=(1, 2))
         matrix = vectorizer.fit_transform(corpus)
+
+        # Pad to fixed dimension
+        n_features = matrix.shape[1]
+        if n_features < FIXED_DIM:
+            matrix = np.pad(matrix.toarray(), ((0, 0), (0, FIXED_DIM - n_features)), mode='constant', constant_values=0)
+        else:
+            matrix = matrix.toarray()
 
         # Initialize and train KMeans
         k = min(4, len(all_posts)) # Adjust K based on data size
@@ -289,13 +348,27 @@ async def vectorize_posts():
     new_vectors_to_insert = []
     
     # Pre-process corpus for vectorization
-    corpus = [f"{p['title']} {p['description']}" for p in all_posts]
+    corpus = []
+    for p in all_posts:
+        category_name = db_manager.get_category_name_by_id(p['product_category_id'])
+        if category_name:
+            text = f"{p['title']} {p['description']} {category_name}"
+        else:
+            text = f"{p['title']} {p['description']}"
+        corpus.append(text)
     
     # Handling cases where the corpus may not produce a vector (e.g., empty vocabulary)
     matrix = vectorizer.transform(corpus)
+    
+    # Pad to fixed dimension
+    n_features = matrix.shape[1]
+    if n_features < FIXED_DIM:
+        matrix = np.pad(matrix.toarray(), ((0, 0), (0, FIXED_DIM - n_features)), mode='constant', constant_values=0)
+    else:
+        matrix = matrix.toarray()
     clusters = kmeans.predict(matrix)
 
-    matrix_array = matrix.toarray()
+    matrix_array = matrix
     for i, post in enumerate(all_posts):
         vector_embedding = matrix_array[i].tolist()
         
