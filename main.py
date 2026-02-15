@@ -9,7 +9,8 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 import numpy as np
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 import nltk
@@ -148,25 +149,44 @@ async def lifespan(app: FastAPI):
     yield
     task.cancel() # Stops the clock when you turn it off
 
-app = FastAPI(title="Pure Search Engine - Local Dev", lifespan=lifespan)
+app = FastAPI(title="Pure Search Engine", lifespan=lifespan)
 
 @app.get("/status", tags=["Health"])
 async def get_status():
-    """Informa si el motor está listo y cuándo fue el último entrenamiento."""
+    """It reports if the engine is ready and when the last training session was.."""
     return {
         "models_loaded": global_vectorizer is not None,
         "vector_dimension": len(global_vectorizer.get_feature_names_out()) if global_vectorizer else 0,
         "training_locked": training_lock.locked()
     }
 
+bearer_scheme = HTTPBearer()
+
 @app.post("/buscar", response_model=SearchResponse)
-async def search(query: SearchQuery):
+async def search(query: SearchQuery, token: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
     """Performs a similarity search in Supabase using optimized vector search by cluster."""
+
+    # 0. Autenticar al usuario usando el token JWT de Supabase.
+    try:
+        # db_manager.client.auth.get_user() valida el token.
+        # Si es inválido o expirado, lanzará una excepción. También devuelve los datos del usuario.
+        user_response = db_manager.client.auth.get_user(token.credentials)
+        user = user_response.user
+        
+        # Extraer nombre completo de los metadatos del usuario.
+        # El .get() previene errores si 'full_name' no estuviera presente.
+        full_name = user.user_metadata.get('full_name', 'Name not available')
+        
+        print(f"INFO: Search performed by: Name='{full_name}', Email='{user.email}'")
+    except Exception:
+        raise HTTPException(
+            status_code=401
+        )
 
     # 1. Verify that the models are loaded globally
     global global_vectorizer, global_kmeans
     if global_vectorizer is None or global_kmeans is None:
-        raise HTTPException(status_code=500, detail="Modelos ML no cargados. Por favor, entrene el modelo primero o reinicie la aplicación si los archivos existen.")
+        raise HTTPException(status_code=500, detail="ML models not loaded. Please train the model first or restart the application if the files exist..")
     
     vectorizer = global_vectorizer
     kmeans = global_kmeans
@@ -185,13 +205,13 @@ async def search(query: SearchQuery):
     expected_dimension = FIXED_DIM
     if len(query_embedding) != expected_dimension:
         if len(query_embedding) == 0:
-            return SearchResponse(total_found=0, matches=[], message="La consulta no produjo un vector con dimensiones (el vectorizador no generó dimensiones). Verifique el entrenamiento del modelo.")
+            return SearchResponse(total_found=0, matches=[], message="The query did not produce a vector with dimensions (the vectorizer did not generate dimensions). Check the model training..")
         else:
-            raise HTTPException(status_code=500, detail=f"El vector de consulta generado tiene una dimensión inesperada ({len(query_embedding)}), se esperaba {expected_dimension}. Revise el modelo.")
+            raise HTTPException(status_code=500, detail=f"The generated query vector has an unexpected dimension ({len(query_embedding)}), it was expected {expected_dimension}. Review the model.")
     
     # Check if the query vector is a vector of zeros (and has the correct dimension)
     if all(val == 0 for val in query_embedding):
-        return SearchResponse(total_found=0, matches=[], message="La consulta no produjo un vector significativo (posiblemente fuera del vocabulario del modelo o solo stopwords).")
+        return SearchResponse(total_found=0, matches=[], message="The query did not produce a meaningful vector (possibly outside the model's vocabulary or only stopwords).")
 
     # 3. Predict query cluster
     query_cluster_id = int(kmeans.predict(query_embedding.reshape(1, -1))[0])
@@ -217,7 +237,7 @@ async def search(query: SearchQuery):
         return SearchResponse(total_found=len(matches), matches=matches)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al realizar la búsqueda en Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error performing search in Supabase: {str(e)}")
 
 
 @app.post("/publicaciones", response_model=List[PublicationCreate], tags=["Supabase"], summary="View all Supabase posts")
@@ -238,7 +258,7 @@ async def get_publications():
             })
         return publications
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obtener publicaciones de Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving publications from Supabase: {str(e)}")
 
 @app.get("/vectores", response_model=List[PostVectorResponse], tags=["Supabase"], summary="View all vectorized data from Supabase")
 async def get_vectors():
@@ -255,9 +275,9 @@ async def get_vectors():
             processed_vectors.append(PostVectorResponse(**v))
         return processed_vectors
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obtener vectores de Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving vectors from Supabase: {str(e)}")
 
-@app.post("/train-models", response_model=StatusResponse, tags=["ML Models"], summary="Train and save Vectorization and K-Means models")
+@app.post("/train-models", response_model=StatusResponse, tags=["ML Models"], summary="Train and save Vectorization and K-Means models",  include_in_schema=False)
 async def train_models_endpoint():
     """
     Train the TfidfVectorizer and KMeans model with current Supabase publications and save them in joblib files.
@@ -265,12 +285,11 @@ async def train_models_endpoint():
     try:
         all_posts = db_manager.get_all_posts()
         if not all_posts:
-            raise HTTPException(status_code=400, detail="No hay publicaciones en Supabase para entrenar los modelos.")
+            raise HTTPException(status_code=400, detail="There are no publications in Supabase to train the models.")
         
         # Ensure there's enough data for KMeans
         if len(all_posts) < 2:
-            raise HTTPException(status_code=400, detail="Se necesitan al menos 2 publicaciones para entrenar el modelo KMeans.")
-
+            raise HTTPException(status_code=400, detail="At least 2 publications are needed to train the KMeans model.")
         corpus = []
         for p in all_posts:
             category_name = db_manager.get_category_name_by_id(p['product_category_id'])
@@ -303,14 +322,13 @@ async def train_models_endpoint():
         # Reload global models in the running app
         load_ml_models()
 
-        return StatusResponse(status="ok", message="Modelos ML entrenados y cargados exitosamente.")
+        return StatusResponse(status="ok", message="ML models successfully trained and loaded.")
     except HTTPException as e:
         raise e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al entrenar o guardar los modelos ML: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error training or saving ML models: {str(e)}")
 
-
-@app.post("/vectorize-posts", response_model=BatchStatusResponse, tags=["Supabase"], summary="Vectorize (or revectorize) all Supabase publications.")
+@app.post("/vectorize-posts", response_model=BatchStatusResponse, tags=["Supabase"], summary="Vectorize (or revectorize) all Supabase publications.",  include_in_schema=False)
 async def vectorize_posts():
     """
     Vectorize all posts in Supabase and save them in the 'post_vectors' table.
@@ -318,7 +336,7 @@ async def vectorize_posts():
     """
     global global_vectorizer, global_kmeans
     if global_vectorizer is None or global_kmeans is None:
-        raise HTTPException(status_code=500, detail="Modelos ML no cargados. Entrene el modelo primero (POST /train-models) o reinicie la aplicación si los archivos existen.")
+        raise HTTPException(status_code=500, detail="ML models not loaded. Train the model first (POST /train-models) or restart the application if the files exist.")
     
     vectorizer = global_vectorizer
     kmeans = global_kmeans
@@ -329,7 +347,7 @@ async def vectorize_posts():
         existing_vectors_count = existing_vectors_response.data[0]['count'] if existing_vectors_response.data else 0
         is_first_vectorization = existing_vectors_count == 0
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al verificar vectores existentes en Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error verifying existing vectors in Supabase: {str(e)}")
 
     try:
         # 1. Remove all existing vectors to perform a full revectorization
@@ -339,10 +357,10 @@ async def vectorize_posts():
         # 2. Get all Supabase publications
         all_posts = db_manager.get_all_posts()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error de conexión con Supabase o al eliminar vectores existentes: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error connecting to Supabase or deleting existing vectors: {str(e)}")
 
     if not all_posts:
-        return BatchStatusResponse(status="ok", items_processed=0, message="No hay publicaciones en la base de datos para vectorizar.")
+        return BatchStatusResponse(status="ok", items_processed=0, message="There are no publications in the database to vectorize.")
 
     # 3. Vectorize and predict clusters for all publications
     new_vectors_to_insert = []
@@ -383,22 +401,13 @@ async def vectorize_posts():
         })
     
     if not new_vectors_to_insert:
-         return BatchStatusResponse(status="error", items_processed=0, message="No se pudieron generar vectores válidos para ninguna publicación. Asegúrese de que hay datos suficientes y el modelo está bien entrenado.")
+         return BatchStatusResponse(status="error", items_processed=0, message="No valid vectors could be generated for any publication. Ensure there is sufficient data and the model is properly trained.")
 
     try:
         # 4. Batch insertion of data
         db_manager.client.table("post_vectors").insert(new_vectors_to_insert).execute()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al insertar vectores en Supabase: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error inserting vectors into Supabase: {str(e)}")
 
-    message = "Primera vectorización completada exitosamente." if is_first_vectorization else "Revectorización completada exitosamente."
+    message = "First vectorization successfully completed." if is_first_vectorization else "Revectorization successfully completed."
     return BatchStatusResponse(status="ok", items_processed=len(new_vectors_to_insert), message=message)
-
-
-
-
-
-
-
-
-
