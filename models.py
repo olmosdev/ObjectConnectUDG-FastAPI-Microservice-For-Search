@@ -1,71 +1,48 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
-# --- Input ---
+# --- Input Models ---
+
 class PublicationCreate(BaseModel):
-    id: int = Field(..., description="ID único de la publicación")
+    """
+    Represents the creation or display structure of a publication.
+    """
+    id: int = Field(..., description="Unique ID of the publication")
     title: str
     description: str
-    category_name: str = Field(..., description="Nombre de la categoría del producto")
+    category_name: str = Field(..., description="Name of the product category")
 
 class SearchQuery(BaseModel):
-    title: Optional[str] = Field(None, description="Título o palabras clave")
-    description: str = Field(..., min_length=3)
+    """
+    Data structure for performing a similarity search.
+    """
+    title: Optional[str] = Field(None, description="Title or keywords for the search")
+    description: str = Field(..., min_length=3, description="Main text body for the search")
     similarity_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
 
-# --- Output ---
+# --- Output Models ---
+
 class MatchResult(BaseModel):
+    """
+    Individual search result with its similarity score.
+    """
     id: int
     title: str
     description: str
     similarity: float
 
 class SearchResponse(BaseModel):
+    """
+    Envelope for a search operation result.
+    """
     total_found: int
     matches: List[MatchResult]
+    message: Optional[str] = None
 
 class StatusResponse(BaseModel):
+    """
+    Standard response for single-item operations or status checks.
+    """
     status: str
     message: str
     processed_id: Optional[int] = None
-
-class BatchStatusResponse(BaseModel):
-    status: str
-    items_processed: int
-    message: str
-
-class VectorRecord(BaseModel):
-    id: int
-    vector: List[float]
-    cluster: int
-
-
-class PostFromSupabase(BaseModel):
-    """
-    Optimized model for Machine Learning training.
-    Represents the minimal data structure fetched from Supabase.
-    """
-    id: int
-    title: str
-    description: str
-    product_category_id: int
-
-    class Config:
-        # 'from_attributes = True' acts as a universal translator:
-        # It allows Pydantic to create an instance of this model even if 
-        # the data from Supabase arrives as an object with attributes (e.g., data.titulo) 
-        # instead of a standard dictionary (e.g., data["titulo"]). 
-        # Essential for compatibility with Databases and ORMs.
-        from_attributes = True
-
-
-class PostVectorResponse(BaseModel):
-    """
-    Representa un registro de la tabla post_vectors.
-    """
-    post_id: int
-    vector_embedding: List[float]
-    cluster_id: int
-
-    class Config:
-        from_attributes = True

@@ -11,6 +11,7 @@ joblib = "*"
 nltk = "*"
 supabase = "*"
 dotenv = "*"
+pydantic-settings = "*"
 
 [dev-packages]
 
