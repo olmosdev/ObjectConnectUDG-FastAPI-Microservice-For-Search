@@ -18,7 +18,7 @@ class SearchQuery(BaseModel):
     """
     title: Optional[str] = Field(None, description="Title or keywords for the search")
     description: str = Field(..., min_length=3, description="Main text body for the search")
-    similarity_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
+    similarity_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
 
 # --- Output Models ---
 

@@ -12,6 +12,8 @@ nltk = "*"
 supabase = "*"
 dotenv = "*"
 pydantic-settings = "*"
+sentence-transformers = "*"
+torch = "*"
 
 [dev-packages]
 

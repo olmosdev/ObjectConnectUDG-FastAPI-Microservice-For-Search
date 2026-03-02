@@ -14,8 +14,9 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = Field(..., validation_alias="SUPABASE_URL")
     SUPABASE_KEY: str = Field(..., validation_alias="SUPABASE_APIKEY_SERVICE_ROLE")
     
-    # --- ML Config ---
-    FIXED_DIM: int = 1000
+    # --- ML Config (SBERT) ---
+    SBERT_MODEL_NAME: str = "paraphrase-multilingual-MiniLM-L12-v2"
+    FIXED_DIM: int = 384 # SBERT mini multilingual output dimension
     K_CLUSTERS_DEFAULT: int = 4
     SYNC_INTERVAL_SECONDS: int = 300 # 5 minutes
     MODEL_FOLDER: str = "data"
