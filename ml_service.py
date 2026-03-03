@@ -7,7 +7,6 @@ import re
 import unicodedata
 from datetime import datetime
 from sklearn.cluster import KMeans
-from sentence_transformers import SentenceTransformer
 
 from supabase_service import db_manager
 from config import settings, get_logger
@@ -43,9 +42,17 @@ class MLService:
         Load SBERT model and KMeans from disk/cache.
         """
         try:
+            # Lazy loading of sentence-transformers
+            from sentence_transformers import SentenceTransformer
+            import torch
+
+            # Force CPU usage to avoid CUDA errors in Fly.io
+            device = "cpu"
+            logger.info(f"Usando dispositivo: {device}")
+
             # 1. Load Sentence Transformer (from cache or internet)
             logger.info(f"Cargando modelo semántico: {settings.SBERT_MODEL_NAME}...")
-            self.model = SentenceTransformer(settings.SBERT_MODEL_NAME)
+            self.model = SentenceTransformer(settings.SBERT_MODEL_NAME, device=device)
             
             # 2. Load KMeans if exists
             if os.path.exists(MODEL_KMEANS):
