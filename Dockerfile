@@ -6,25 +6,25 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Instalar dependencias del sistema necesarias
+# Install necessary system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Crear entorno virtual e instalar Torch CPU específicamente PRIMERO
-# Esto evita que sentence-transformers instale la versión con CUDA
+# Create virtual environment and install Torch CPU specifically FIRST
+# This prevents sentence-transformers from installing the CUDA version.
 RUN python -m venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
 RUN pip install --upgrade pip && \
     pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-# Instalar el resto de dependencias
+# Install the rest of the dependencies
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# Copiar el resto del código
+# Copy the rest of the code
 COPY . .
 
-# Comando de inicio (coincide con tu fly.toml)
+# Start command (matches your fly.toml)
 CMD ["uvicorn", "main.py:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
